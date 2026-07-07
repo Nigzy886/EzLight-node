@@ -9,10 +9,11 @@
 #include "ScheduleEngine.h"
 #include "AstroEngine.h"
 #include "TimeService.h"
+#include "ConfigStore.h"
 
 class WebRoutes {
 public:
-  WebRoutes(WebServer& server, EzHubCapabilities& capabilities, TelemetryReporter& telemetry, CommandHandler& commands, RelayDriver& relays, ScheduleEngine& schedule, AstroEngine& astro, TimeService& timeService);
+  WebRoutes(WebServer& server, EzHubCapabilities& capabilities, TelemetryReporter& telemetry, CommandHandler& commands, RelayDriver& relays, ScheduleEngine& schedule, AstroEngine& astro, TimeService& timeService, ConfigStore& configStore);
   void begin();
   void handleClient();
 
@@ -25,6 +26,7 @@ private:
   ScheduleEngine& _schedule;
   AstroEngine& _astro;
   TimeService& _timeService;
+  ConfigStore& _configStore;
   void sendStatusPage();
   void sendJson(uint16_t code, const String& json);
 };

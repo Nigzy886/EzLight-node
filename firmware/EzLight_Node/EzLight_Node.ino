@@ -23,7 +23,7 @@ EzHubCapabilities capabilities;
 TelemetryReporter telemetryReporter;
 WebServer server(80);
 CommandHandler commandHandler(relays, overrideManager, astroEngine, configStore, timeService);
-WebRoutes webRoutes(server, capabilities, telemetryReporter, commandHandler, relays, scheduleEngine, astroEngine, timeService);
+WebRoutes webRoutes(server, capabilities, telemetryReporter, commandHandler, relays, scheduleEngine, astroEngine, timeService, configStore);
 
 const char* WIFI_SSID = ""; // TODO: Load Wi-Fi credentials from EzHub provisioning or local secure config.
 const char* WIFI_PASS = "";
@@ -49,13 +49,20 @@ void setup() {
   Serial.begin(115200);
   Serial.println("EzLight-node v0.1 skeleton booting with relays forced OFF");
 
-  configStore.begin();
+  const bool configStoreOk = configStore.begin();
   EzLightConfig candidate;
-  configStore.load(candidate);
+  const bool configLoadOk = configStoreOk && configStore.load(candidate);
   String configError;
-  if (!configStore.applyIfValid(candidate, configError)) {
+  if (configLoadOk && !configStore.applyIfValid(candidate, configError)) {
     Serial.print("Config rejected before apply: ");
     Serial.println(configError);
+  } else if (!configLoadOk && configStore.lastError().length() > 0) {
+    Serial.print("Config rejected before apply: ");
+    Serial.println(configStore.lastError());
+  }
+  const EzLightConfig& activeConfig = configStore.current();
+  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+    relays.setMode(activeConfig.relays[i].id, activeConfig.modes[i]);
   }
 
   connectWifiIfConfigured();

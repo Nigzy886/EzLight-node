@@ -1,8 +1,8 @@
 ﻿#include "WebRoutes.h"
 #include <WiFi.h>
 
-WebRoutes::WebRoutes(WebServer& server, EzHubCapabilities& capabilities, TelemetryReporter& telemetry, CommandHandler& commands, RelayDriver& relays, ScheduleEngine& schedule, AstroEngine& astro, TimeService& timeService)
-  : _server(server), _capabilities(capabilities), _telemetry(telemetry), _commands(commands), _relays(relays), _schedule(schedule), _astro(astro), _timeService(timeService) {}
+WebRoutes::WebRoutes(WebServer& server, EzHubCapabilities& capabilities, TelemetryReporter& telemetry, CommandHandler& commands, RelayDriver& relays, ScheduleEngine& schedule, AstroEngine& astro, TimeService& timeService, ConfigStore& configStore)
+  : _server(server), _capabilities(capabilities), _telemetry(telemetry), _commands(commands), _relays(relays), _schedule(schedule), _astro(astro), _timeService(timeService), _configStore(configStore) {}
 
 void WebRoutes::begin() {
   _server.on("/", HTTP_GET, [this]() { sendStatusPage(); });
@@ -24,6 +24,9 @@ void WebRoutes::sendStatusPage() {
     html += "<li>" + String(_relays.definition(i).id) + ": logical=" + (_relays.logicalState(i) ? "on" : "off") + ", physical_level=" + String(_relays.physicalLevel(i)) + ", mode=" + relayModeToString(_relays.mode(i)) + "</li>";
   }
   html += F("</ul>");
+  html += "<p>config_loaded=" + String(_configStore.configLoaded() ? "true" : "false") + "</p>";
+  html += "<p>config_source=" + _configStore.configSource() + "</p>";
+  html += "<p>config_error=" + _configStore.lastError() + "</p>";
   html += "<p>time_valid=" + String(_timeService.valid() ? "true" : "false") + "</p>";
   html += "<p>next_event=" + _schedule.nextEvent() + "</p>";
   html += "<p>dusk_time=" + _astro.duskTime() + "</p>";
