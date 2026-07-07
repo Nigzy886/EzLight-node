@@ -1,0 +1,17 @@
+{
+  "node_id": "ezlight_001",
+  "node_type": "ezlight",
+  "profile": "experimental.ezlight.v1",
+  "transport": "wifi_primary",
+  "timezone": "Pacific/Auckland",
+  "time_source": "ntp",
+  "rtc_required": false,
+  "astro_convention": "civil_dusk_civil_dawn",
+  "relays": [
+    { "id": "path_lights", "gpio": 14, "active_low": true, "mode": "manual" },
+    { "id": "driveway_lights", "gpio": 27, "active_low": true, "mode": "manual" },
+    { "id": "entrance_lights", "gpio": 26, "active_low": true, "mode": "manual" }
+  ],
+  "schedule": { "enabled": false, "storage": "littlefs_json", "events": [] },
+  "astro": { "location_set": false, "latitude": null, "longitude": null }
+}
