@@ -21,6 +21,8 @@ struct EzLightConfig {
   bool astroLocationSet;
   double latitude;
   double longitude;
+  AstroRule astroRules[EZLIGHT_MAX_ASTRO_RULES];
+  uint8_t astroRuleCount;
 };
 
 class ConfigStore {
@@ -46,6 +48,9 @@ private:
   bool parseRelayConfig(JsonObject relay, uint8_t index, EzLightConfig& config, String& error) const;
   bool parseScheduleConfig(JsonObject schedule, EzLightConfig& config, String& error) const;
   bool parseScheduleRule(JsonObject rule, EzLightConfig& config, uint8_t ruleIndex, bool usedRelayRules[EZLIGHT_RELAY_COUNT], String& error) const;
+  bool parseAstroConfig(JsonObject astro, EzLightConfig& config, String& error) const;
+  bool parseAstroRule(JsonObject rule, EzLightConfig& config, uint8_t ruleIndex, bool usedRelayRules[EZLIGHT_RELAY_COUNT], String& error) const;
+  bool parseAstroEvent(const char* value, AstroEvent& event) const;
   bool parseTimeOfDay(const char* value, uint16_t& minuteOfDay) const;
   bool rejectLoad(const String& error);
   bool validateRelayDefaults(const EzLightConfig& config, String& error) const;

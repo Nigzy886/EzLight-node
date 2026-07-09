@@ -31,6 +31,8 @@ void WebRoutes::sendStatusPage() {
   html += "<p>next_event=" + _schedule.nextEvent() + "</p>";
   html += "<p>dusk_time=" + _astro.duskTime() + "</p>";
   html += "<p>dawn_time=" + _astro.dawnTime() + "</p>";
+  html += "<p>civil_dusk=" + _astro.duskTime() + "</p>";
+  html += "<p>civil_dawn=" + _astro.dawnTime() + "</p>";
   html += F("<p>No schedule editor or config editor is provided in v0.1.</p></body></html>");
   _server.send(200, "text/html", html);
 }

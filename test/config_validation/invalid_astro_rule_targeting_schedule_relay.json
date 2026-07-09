@@ -10,9 +10,16 @@
   "relays": [
     { "id": "path_lights", "gpio": 14, "active_low": true, "mode": "manual" },
     { "id": "driveway_lights", "gpio": 27, "active_low": true, "mode": "manual" },
-    { "id": "entrance_lights", "gpio": 26, "active_low": true, "mode": "manual" },
+    { "id": "entrance_lights", "gpio": 26, "active_low": true, "mode": "schedule" },
     { "id": "spare_lights", "gpio": 25, "active_low": true, "mode": "disabled" }
   ],
   "schedule": { "enabled": false, "storage": "littlefs_json", "events": [], "rules": [] },
-  "astro": { "location_set": false, "latitude": null, "longitude": null, "rules": [] }
+  "astro": {
+    "location_set": true,
+    "latitude": -42.45,
+    "longitude": 171.21,
+    "rules": [
+      { "relay_id": "entrance_lights", "on": "civil_dusk", "off": "civil_dawn" }
+    ]
+  }
 }

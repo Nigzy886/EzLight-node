@@ -32,6 +32,7 @@ EzLightConfig ConfigStore::defaults() const {
   config.astroLocationSet = false;
   config.latitude = 0.0;
   config.longitude = 0.0;
+  config.astroRuleCount = 0;
   for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
     config.modes[i] = RelayMode::Manual;
     config.scheduleEnabled[i] = false;
@@ -110,20 +111,9 @@ bool ConfigStore::load(EzLightConfig& outConfig) {
   if (!root["astro"].is<JsonObject>()) {
     return rejectLoad("missing_astro");
   }
-  JsonObject astro = root["astro"].as<JsonObject>();
-  if (!astro["location_set"].is<bool>()) {
-    return rejectLoad("missing_astro_location_flag");
-  }
-  outConfig.astroLocationSet = astro["location_set"].as<bool>();
-  if (outConfig.astroLocationSet) {
-    if (!astro["latitude"].is<double>() || !astro["longitude"].is<double>()) {
-      return rejectLoad("missing_astro_location");
-    }
-    outConfig.latitude = astro["latitude"].as<double>();
-    outConfig.longitude = astro["longitude"].as<double>();
-  } else {
-    outConfig.latitude = 0.0;
-    outConfig.longitude = 0.0;
+  String astroError;
+  if (!parseAstroConfig(root["astro"].as<JsonObject>(), outConfig, astroError)) {
+    return rejectLoad(astroError);
   }
 
   String validationError;
@@ -168,6 +158,35 @@ bool ConfigStore::validate(const EzLightConfig& config, String& error) const {
   if (config.astroLocationSet && (config.latitude < -90.0 || config.latitude > 90.0 || config.longitude < -180.0 || config.longitude > 180.0)) {
     error = "invalid_astro_location";
     return false;
+  }
+  if (!config.astroLocationSet && config.astroRuleCount > 0) {
+    error = "astro_rules_require_location";
+    return false;
+  }
+  if (config.astroRuleCount > EZLIGHT_MAX_ASTRO_RULES) {
+    error = "too_many_astro_rules";
+    return false;
+  }
+  bool usedAstroRules[EZLIGHT_RELAY_COUNT] = {false, false, false, false};
+  for (uint8_t i = 0; i < config.astroRuleCount; ++i) {
+    const AstroRule& rule = config.astroRules[i];
+    if (rule.relayIndex >= EZLIGHT_RELAY_COUNT) {
+      error = "unknown_astro_relay";
+      return false;
+    }
+    if (config.modes[rule.relayIndex] == RelayMode::Disabled) {
+      error = "astro_targets_disabled_relay";
+      return false;
+    }
+    if (config.modes[rule.relayIndex] != RelayMode::Astro) {
+      error = "astro_targets_non_astro_relay";
+      return false;
+    }
+    if (usedAstroRules[rule.relayIndex]) {
+      error = "duplicate_astro_rule";
+      return false;
+    }
+    usedAstroRules[rule.relayIndex] = true;
   }
   if (config.scheduleGloballyEnabled && config.scheduleRuleCount == 0) {
     error = "missing_schedule_rules";
@@ -384,6 +403,125 @@ bool ConfigStore::parseScheduleRule(JsonObject rule, EzLightConfig& config, uint
   usedRelayRules[relayIndex] = true;
   config.scheduleRules[ruleIndex] = {static_cast<uint8_t>(relayIndex), onMinute, offMinute};
   return true;
+}
+
+bool ConfigStore::parseAstroConfig(JsonObject astro, EzLightConfig& config, String& error) const {
+  if (!astro["location_set"].is<bool>()) {
+    error = "missing_astro_location_flag";
+    return false;
+  }
+  config.astroLocationSet = astro["location_set"].as<bool>();
+  config.astroRuleCount = 0;
+  if (config.astroLocationSet) {
+    if (!astro["latitude"].is<double>() || !astro["longitude"].is<double>()) {
+      error = "missing_astro_location";
+      return false;
+    }
+    config.latitude = astro["latitude"].as<double>();
+    config.longitude = astro["longitude"].as<double>();
+  } else {
+    config.latitude = 0.0;
+    config.longitude = 0.0;
+  }
+
+  const bool hasRules = astro["rules"].is<JsonArray>();
+  if (!astro["rules"].isNull() && !hasRules) {
+    error = "invalid_astro_rules";
+    return false;
+  }
+  if (!hasRules) {
+    return true;
+  }
+  if (!config.astroLocationSet) {
+    error = "astro_rules_require_location";
+    return false;
+  }
+
+  JsonArray rules = astro["rules"].as<JsonArray>();
+  if (rules.size() > EZLIGHT_MAX_ASTRO_RULES) {
+    error = "too_many_astro_rules";
+    return false;
+  }
+
+  bool usedRelayRules[EZLIGHT_RELAY_COUNT] = {false, false, false, false};
+  for (JsonVariant ruleVariant : rules) {
+    if (!ruleVariant.is<JsonObject>()) {
+      error = "invalid_astro_rule";
+      return false;
+    }
+    if (!parseAstroRule(ruleVariant.as<JsonObject>(), config, config.astroRuleCount, usedRelayRules, error)) {
+      return false;
+    }
+    config.astroRuleCount++;
+  }
+  return true;
+}
+
+bool ConfigStore::parseAstroRule(JsonObject rule, EzLightConfig& config, uint8_t ruleIndex, bool usedRelayRules[EZLIGHT_RELAY_COUNT], String& error) const {
+  if (!rule["relay_id"].is<const char*>() || !rule["on"].is<const char*>() || !rule["off"].is<const char*>()) {
+    error = "invalid_astro_rule";
+    return false;
+  }
+  if (!rule["offset"].isNull() || !rule["offset_minutes"].isNull() || !rule["on_offset"].isNull() || !rule["off_offset"].isNull()) {
+    error = "unsupported_astro_offset";
+    return false;
+  }
+
+  const String relayId = rule["relay_id"].as<const char*>();
+  int relayIndex = -1;
+  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+    if (relayId == config.relays[i].id) {
+      relayIndex = i;
+      break;
+    }
+  }
+  if (relayIndex < 0) {
+    error = "unknown_astro_relay";
+    return false;
+  }
+  if (config.modes[relayIndex] == RelayMode::Disabled) {
+    error = "astro_targets_disabled_relay";
+    return false;
+  }
+  if (config.modes[relayIndex] != RelayMode::Astro) {
+    error = "astro_targets_non_astro_relay";
+    return false;
+  }
+  if (usedRelayRules[relayIndex]) {
+    error = "duplicate_astro_rule";
+    return false;
+  }
+
+  AstroEvent onEvent;
+  AstroEvent offEvent;
+  if (!parseAstroEvent(rule["on"].as<const char*>(), onEvent) || !parseAstroEvent(rule["off"].as<const char*>(), offEvent)) {
+    error = "unsupported_astro_event";
+    return false;
+  }
+  if (onEvent == offEvent) {
+    error = "invalid_astro_window";
+    return false;
+  }
+
+  usedRelayRules[relayIndex] = true;
+  config.astroRules[ruleIndex] = {static_cast<uint8_t>(relayIndex), onEvent, offEvent};
+  return true;
+}
+
+bool ConfigStore::parseAstroEvent(const char* value, AstroEvent& event) const {
+  if (value == nullptr) {
+    return false;
+  }
+  const String eventValue(value);
+  if (eventValue == "civil_dusk") {
+    event = AstroEvent::CivilDusk;
+    return true;
+  }
+  if (eventValue == "civil_dawn") {
+    event = AstroEvent::CivilDawn;
+    return true;
+  }
+  return false;
 }
 
 bool ConfigStore::parseTimeOfDay(const char* value, uint16_t& minuteOfDay) const {

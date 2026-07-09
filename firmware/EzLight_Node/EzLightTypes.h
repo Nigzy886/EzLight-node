@@ -10,6 +10,7 @@ static const char* EZLIGHT_FW = "ezlight-node";
 static const char* EZLIGHT_VERSION = "0.1.0-skeleton";
 static const uint8_t EZLIGHT_RELAY_COUNT = 4;
 static const uint8_t EZLIGHT_MAX_SCHEDULE_RULES = 8;
+static const uint8_t EZLIGHT_MAX_ASTRO_RULES = 4;
 
 struct RelayDefinition {
   const char* id;
@@ -20,6 +21,7 @@ struct RelayDefinition {
 
 enum class RelayMode : uint8_t { Manual, Schedule, Astro, Disabled };
 enum class OverrideMode : uint8_t { None, OnFor5Min, OnFor15Min, OnFor30Min, OnFor1Hour, OffUntilNextEvent, ManualOn, ManualOff };
+enum class AstroEvent : uint8_t { CivilDusk, CivilDawn };
 
 struct RelayRuntimeState {
   bool logicalOn;
@@ -47,6 +49,12 @@ struct FixedScheduleRule {
   uint8_t relayIndex;
   uint16_t onMinute;
   uint16_t offMinute;
+};
+
+struct AstroRule {
+  uint8_t relayIndex;
+  AstroEvent onEvent;
+  AstroEvent offEvent;
 };
 
 inline const char* relayModeToString(RelayMode mode) {

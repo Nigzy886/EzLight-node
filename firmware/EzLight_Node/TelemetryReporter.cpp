@@ -18,6 +18,8 @@ String TelemetryReporter::stateJson(const RelayDriver& relays, const ScheduleEng
   json += "\"next_event\":\"" + schedule.nextEvent() + "\",";
   json += "\"dusk_time\":\"" + astro.duskTime() + "\",";
   json += "\"dawn_time\":\"" + astro.dawnTime() + "\",";
+  json += "\"civil_dusk\":\"" + astro.duskTime() + "\",";
+  json += "\"civil_dawn\":\"" + astro.dawnTime() + "\",";
   json += "\"uptime\":" + String(millis() / 1000UL);
   if (timeService.status().warning.length() > 0) { json += ",\"time_warning\":\"" + timeService.status().warning + "\""; }
   if (astro.warning().length() > 0) { json += ",\"astro_warning\":\"" + astro.warning() + "\""; }

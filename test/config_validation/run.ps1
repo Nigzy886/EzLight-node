@@ -25,6 +25,20 @@ $expectedResults = [ordered]@{
   "invalid_bad_mode.json" = $false
   "invalid_unsupported_feature_pir.json" = $false
   "invalid_bad_astro_location.json" = $false
+  "valid_astro_location.json" = $true
+  "valid_astro_rule_config.json" = $true
+  "invalid_astro_location_set_not_boolean.json" = $false
+  "invalid_astro_missing_location.json" = $false
+  "invalid_bad_astro_latitude.json" = $false
+  "invalid_bad_astro_longitude.json" = $false
+  "invalid_astro_rules_not_array.json" = $false
+  "invalid_astro_rule_unknown_relay.json" = $false
+  "invalid_astro_rule_targeting_manual_relay.json" = $false
+  "invalid_astro_rule_targeting_schedule_relay.json" = $false
+  "invalid_astro_rule_targeting_disabled_relay.json" = $false
+  "invalid_astro_unsupported_event_sunrise.json" = $false
+  "invalid_astro_unsupported_offset.json" = $false
+  "invalid_duplicate_astro_rule.json" = $false
   "valid_schedule_config.json" = $true
   "valid_overnight_schedule.json" = $true
   "invalid_schedule_bad_hhmm.json" = $false
@@ -51,6 +65,7 @@ $expectedRelays = @(
 )
 
 $validModes = @("manual", "schedule", "astro", "disabled")
+$validAstroEvents = @("civil_dusk", "civil_dawn")
 $unsupportedFeatures = @("pir", "lux_sensor", "current_sensing", "holiday_mode", "random_holiday_mode", "wall_switches")
 
 function Reject([string]$Reason) {
@@ -255,6 +270,52 @@ function Validate-EzLightConfig($Config) {
     }
     if ($Config.astro.latitude -lt -90.0 -or $Config.astro.latitude -gt 90.0 -or $Config.astro.longitude -lt -180.0 -or $Config.astro.longitude -gt 180.0) {
       Reject "invalid_astro_location"
+    }
+  }
+  if (Has-Property $Config.astro "rules") {
+    if ($Config.astro.rules -isnot [array]) {
+      Reject "invalid_astro_rules"
+    }
+    if (-not $Config.astro.location_set -and @($Config.astro.rules).Count -gt 0) {
+      Reject "astro_rules_require_location"
+    }
+    $astroRules = @($Config.astro.rules)
+    if ($astroRules.Count -gt 4) {
+      Reject "too_many_astro_rules"
+    }
+    $astroRelays = @{}
+    foreach ($rule in $astroRules) {
+      if ($rule.GetType().Name -ne "PSCustomObject") {
+        Reject "invalid_astro_rule"
+      }
+      if (-not (Has-Property $rule "relay_id") -or -not (Has-Property $rule "on") -or -not (Has-Property $rule "off")) {
+        Reject "invalid_astro_rule"
+      }
+      if ((Has-Property $rule "offset") -or (Has-Property $rule "offset_minutes") -or (Has-Property $rule "on_offset") -or (Has-Property $rule "off_offset")) {
+        Reject "unsupported_astro_offset"
+      }
+      if (-not (Is-StringValue $rule.relay_id) -or -not (Is-StringValue $rule.on) -or -not (Is-StringValue $rule.off)) {
+        Reject "invalid_astro_rule"
+      }
+      if (-not $relayModes.ContainsKey($rule.relay_id)) {
+        Reject "unknown_astro_relay"
+      }
+      if ($relayModes[$rule.relay_id] -eq "disabled") {
+        Reject "astro_targets_disabled_relay"
+      }
+      if ($relayModes[$rule.relay_id] -ne "astro") {
+        Reject "astro_targets_non_astro_relay"
+      }
+      if ($astroRelays.ContainsKey($rule.relay_id)) {
+        Reject "duplicate_astro_rule"
+      }
+      if ($validAstroEvents -notcontains $rule.on -or $validAstroEvents -notcontains $rule.off) {
+        Reject "unsupported_astro_event"
+      }
+      if ($rule.on -eq $rule.off) {
+        Reject "invalid_astro_window"
+      }
+      $astroRelays[$rule.relay_id] = $true
     }
   }
 

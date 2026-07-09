@@ -1,0 +1,30 @@
+{
+  "cases": [
+    {
+      "name": "reefton_winter_civil_twilight",
+      "date": "2026-06-21",
+      "latitude": -42.45,
+      "longitude": 171.21,
+      "utc_offset_minutes": 720,
+      "expected": {
+        "civil_dawn_min": "07:00",
+        "civil_dawn_max": "08:30",
+        "civil_dusk_min": "17:00",
+        "civil_dusk_max": "18:30"
+      }
+    },
+    {
+      "name": "reefton_summer_civil_twilight",
+      "date": "2026-12-21",
+      "latitude": -42.45,
+      "longitude": 171.21,
+      "utc_offset_minutes": 780,
+      "expected": {
+        "civil_dawn_min": "04:30",
+        "civil_dawn_max": "06:00",
+        "civil_dusk_min": "21:30",
+        "civil_dusk_max": "23:00"
+      }
+    }
+  ]
+}

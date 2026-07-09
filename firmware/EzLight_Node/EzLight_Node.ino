@@ -65,12 +65,13 @@ void setup() {
     relays.setMode(activeConfig.relays[i].id, activeConfig.modes[i]);
   }
   scheduleEngine.configure(activeConfig);
+  astroEngine.configure(activeConfig);
 
   connectWifiIfConfigured();
   timeService.beginNtp(configStore.current().timezone.c_str());
   timeService.update();
   scheduleEngine.update(timeService.valid(), relays);
-  astroEngine.recalculate(timeService.valid());
+  astroEngine.update(timeService.valid(), relays);
   webRoutes.begin();
 }
 
@@ -78,9 +79,7 @@ void loop() {
   timeService.update();
   overrideManager.update(relays);
   scheduleEngine.update(timeService.valid(), relays);
-  if (timeService.valid()) {
-    astroEngine.recalculate(true);
-  }
+  astroEngine.update(timeService.valid(), relays);
   webRoutes.handleClient();
   delay(10);
 }
