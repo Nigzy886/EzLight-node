@@ -52,6 +52,8 @@ Firmware must write each OFF level before setting the relay pin to `OUTPUT`.
 
 The ESP32 drives low-voltage relay/control inputs only. It must not be described as directly switching mains lighting. Mains wiring must be handled through suitable relays/contactors, enclosures, fusing, isolation, and qualified electrical work where required.
 
+Before connecting any real relay loads or outdoor lighting hardware, complete the bench-test gate in `docs/Bench_Test_Readiness.md`. Firmware validation must use LEDs, a meter, or an unloaded relay module only.
+
 ## Build Sketch
 
 ```powershell

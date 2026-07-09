@@ -10,6 +10,8 @@
 - Relay OFF levels are defined before setup continues.
 - GPIO14, GPIO27, GPIO26, and GPIO25 are written HIGH before `pinMode(..., OUTPUT)`.
 - All relays remain OFF before Wi-Fi, LittleFS, config loading, schedule evaluation, astro calculation, EzHub connection, or HTTP startup.
+- Bench testing uses LEDs, a meter, or an unloaded relay module only. No mains or outdoor lighting circuits are connected during firmware validation.
+- Reset testing confirms relay outputs do not flicker ON and the relay interface hardware defaults OFF while the ESP32 is resetting.
 
 ## Config
 
@@ -40,3 +42,8 @@
 - No local schedule editor exists in v0.1.
 - No config editor exists in v0.1.
 - PIR, lux sensor, current sensing, holiday/random mode, and wall switch inputs are not implemented.
+
+## Bench Test Gate
+
+- Complete `docs/Bench_Test_Readiness.md` before connecting real relay hardware.
+- Do not connect mains or outdoor lighting until relay/contactors, enclosure, fusing, isolation, and wiring boundaries are handled properly by a qualified person where required.
