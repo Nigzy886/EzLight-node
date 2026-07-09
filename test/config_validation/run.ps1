@@ -25,6 +25,22 @@ $expectedResults = [ordered]@{
   "invalid_bad_mode.json" = $false
   "invalid_unsupported_feature_pir.json" = $false
   "invalid_bad_astro_location.json" = $false
+  "valid_schedule_config.json" = $true
+  "valid_overnight_schedule.json" = $true
+  "invalid_schedule_bad_hhmm.json" = $false
+  "invalid_schedule_24_00.json" = $false
+  "invalid_schedule_12_60.json" = $false
+  "invalid_schedule_enabled_not_boolean.json" = $false
+  "invalid_schedule_overlap.json" = $false
+  "invalid_schedule_rules_not_array.json" = $false
+  "invalid_schedule_too_many_rules.json" = $false
+  "invalid_schedule_wrapped_time_value.json" = $false
+  "invalid_schedule_wrong_shape.json" = $false
+  "invalid_duplicate_relay_schedule.json" = $false
+  "invalid_schedule_targeting_astro_relay.json" = $false
+  "invalid_schedule_unknown_relay.json" = $false
+  "invalid_schedule_targeting_manual_relay.json" = $false
+  "invalid_schedule_targeting_disabled_relay.json" = $false
 }
 
 $expectedRelays = @(
@@ -58,6 +74,18 @@ function Is-BoolValue($Value) {
 
 function Is-NumberValue($Value) {
   return $Value -is [byte] -or $Value -is [int16] -or $Value -is [int32] -or $Value -is [int64] -or $Value -is [float] -or $Value -is [double] -or $Value -is [decimal]
+}
+
+function Parse-TimeOfDay([string]$Value) {
+  if ($Value -notmatch '^\d{2}:\d{2}$') {
+    Reject "invalid_schedule_time"
+  }
+  $hour = [int]$Value.Substring(0, 2)
+  $minute = [int]$Value.Substring(3, 2)
+  if ($hour -lt 0 -or $hour -gt 23 -or $minute -lt 0 -or $minute -gt 59) {
+    Reject "invalid_schedule_time"
+  }
+  return ($hour * 60) + $minute
 }
 
 function Validate-EzLightConfig($Config) {
@@ -110,6 +138,7 @@ function Validate-EzLightConfig($Config) {
 
   $seenIds = @{}
   $seenGpios = @{}
+  $relayModes = @{}
   for ($i = 0; $i -lt 4; $i++) {
     $relay = $relays[$i]
     if ($relay.GetType().Name -ne "PSCustomObject") {
@@ -141,22 +170,74 @@ function Validate-EzLightConfig($Config) {
     if ($validModes -notcontains $relay.mode) {
       Reject "invalid_relay_mode"
     }
+    $relayModes[$relay.id] = $relay.mode
   }
 
   if (-not (Has-Property $Config "schedule") -or $Config.schedule.GetType().Name -ne "PSCustomObject") {
     Reject "missing_schedule"
   }
-  if (-not (Has-Property $Config.schedule "enabled") -or -not (Has-Property $Config.schedule "storage") -or -not (Has-Property $Config.schedule "events")) {
+  if (-not (Has-Property $Config.schedule "enabled")) {
     Reject "invalid_schedule_config"
   }
-  if (-not (Is-BoolValue $Config.schedule.enabled) -or $Config.schedule.storage -ne "littlefs_json") {
+  if (-not (Is-BoolValue $Config.schedule.enabled)) {
     Reject "invalid_schedule_config"
   }
-  if ($Config.schedule.events -isnot [array]) {
-    Reject "missing_schedule_events"
+  if ((Has-Property $Config.schedule "storage") -and $Config.schedule.storage -ne "littlefs_json") {
+    Reject "invalid_schedule_config"
   }
-  if (@($Config.schedule.events).Count -gt 0) {
-    Reject "schedule_execution_not_supported_v0_1"
+  if (Has-Property $Config.schedule "events") {
+    if ($Config.schedule.events -isnot [array]) {
+      Reject "missing_schedule_events"
+    }
+    if (@($Config.schedule.events).Count -gt 0) {
+      Reject "schedule_execution_not_supported_v0_1"
+    }
+  }
+  $hasRules = Has-Property $Config.schedule "rules"
+  if ($Config.schedule.enabled -and -not $hasRules) {
+    Reject "missing_schedule_rules"
+  }
+  if ($hasRules) {
+    if ($Config.schedule.rules -isnot [array]) {
+      Reject "invalid_schedule_rules"
+    }
+    $rules = @($Config.schedule.rules)
+    if ($rules.Count -gt 8) {
+      Reject "too_many_schedule_rules"
+    }
+    if ($Config.schedule.enabled -and $rules.Count -eq 0) {
+      Reject "missing_schedule_rules"
+    }
+    $scheduledRelays = @{}
+    foreach ($rule in $rules) {
+      if ($rule.GetType().Name -ne "PSCustomObject") {
+        Reject "invalid_schedule_rule"
+      }
+      if (-not (Has-Property $rule "relay_id") -or -not (Has-Property $rule "on") -or -not (Has-Property $rule "off")) {
+        Reject "invalid_schedule_rule"
+      }
+      if (-not (Is-StringValue $rule.relay_id) -or -not (Is-StringValue $rule.on) -or -not (Is-StringValue $rule.off)) {
+        Reject "invalid_schedule_rule"
+      }
+      if (-not $relayModes.ContainsKey($rule.relay_id)) {
+        Reject "unknown_schedule_relay"
+      }
+      if ($relayModes[$rule.relay_id] -eq "disabled") {
+        Reject "schedule_targets_disabled_relay"
+      }
+      if ($relayModes[$rule.relay_id] -ne "schedule") {
+        Reject "schedule_targets_non_schedule_relay"
+      }
+      if ($scheduledRelays.ContainsKey($rule.relay_id)) {
+        Reject "duplicate_schedule_rule"
+      }
+      $scheduledRelays[$rule.relay_id] = $true
+      $onMinute = Parse-TimeOfDay $rule.on
+      $offMinute = Parse-TimeOfDay $rule.off
+      if ($onMinute -eq $offMinute) {
+        Reject "invalid_schedule_window"
+      }
+    }
   }
 
   if (-not (Has-Property $Config "astro") -or $Config.astro.GetType().Name -ne "PSCustomObject") {

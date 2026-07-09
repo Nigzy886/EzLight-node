@@ -1,0 +1,31 @@
+{
+  "node_id": "ezlight_001",
+  "node_type": "ezlight",
+  "profile": "experimental.ezlight.v1",
+  "transport": "wifi_primary",
+  "timezone": "Pacific/Auckland",
+  "time_source": "ntp",
+  "rtc_required": false,
+  "astro_convention": "civil_dusk_civil_dawn",
+  "relays": [
+    { "id": "path_lights", "gpio": 14, "active_low": true, "mode": "schedule" },
+    { "id": "driveway_lights", "gpio": 27, "active_low": true, "mode": "schedule" },
+    { "id": "entrance_lights", "gpio": 26, "active_low": true, "mode": "schedule" },
+    { "id": "spare_lights", "gpio": 25, "active_low": true, "mode": "schedule" }
+  ],
+  "schedule": {
+    "enabled": true,
+    "rules": [
+      { "relay_id": "path_lights", "on": "00:00", "off": "00:10" },
+      { "relay_id": "driveway_lights", "on": "01:00", "off": "01:10" },
+      { "relay_id": "entrance_lights", "on": "02:00", "off": "02:10" },
+      { "relay_id": "spare_lights", "on": "03:00", "off": "03:10" },
+      { "relay_id": "path_lights", "on": "04:00", "off": "04:10" },
+      { "relay_id": "driveway_lights", "on": "05:00", "off": "05:10" },
+      { "relay_id": "entrance_lights", "on": "06:00", "off": "06:10" },
+      { "relay_id": "spare_lights", "on": "07:00", "off": "07:10" },
+      { "relay_id": "path_lights", "on": "08:00", "off": "08:10" }
+    ]
+  },
+  "astro": { "location_set": false, "latitude": null, "longitude": null }
+}

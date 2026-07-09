@@ -9,6 +9,7 @@ static const char* EZLIGHT_MODEL = "ESP32-4Relay-EzLight";
 static const char* EZLIGHT_FW = "ezlight-node";
 static const char* EZLIGHT_VERSION = "0.1.0-skeleton";
 static const uint8_t EZLIGHT_RELAY_COUNT = 4;
+static const uint8_t EZLIGHT_MAX_SCHEDULE_RULES = 8;
 
 struct RelayDefinition {
   const char* id;
@@ -40,6 +41,12 @@ struct TimeStatus {
   bool wasEverValid;
   bool lostAfterBoot;
   String warning;
+};
+
+struct FixedScheduleRule {
+  uint8_t relayIndex;
+  uint16_t onMinute;
+  uint16_t offMinute;
 };
 
 inline const char* relayModeToString(RelayMode mode) {

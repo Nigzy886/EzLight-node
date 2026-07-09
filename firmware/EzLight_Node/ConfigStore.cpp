@@ -27,6 +27,8 @@ EzLightConfig ConfigStore::defaults() const {
   config.relays[2] = {"entrance_lights", "Entrance lights", 26, true};
   config.relays[3] = {"spare_lights", "Spare lights", 25, true};
   config.timezone = "NZST-12NZDT,M9.5.0,M4.1.0/3";
+  config.scheduleGloballyEnabled = false;
+  config.scheduleRuleCount = 0;
   config.astroLocationSet = false;
   config.latitude = 0.0;
   config.longitude = 0.0;
@@ -100,18 +102,9 @@ bool ConfigStore::load(EzLightConfig& outConfig) {
   if (!root["schedule"].is<JsonObject>()) {
     return rejectLoad("missing_schedule");
   }
-  JsonObject schedule = root["schedule"].as<JsonObject>();
-  if (!schedule["enabled"].is<bool>() || !schedule["storage"].is<const char*>() || String(schedule["storage"].as<const char*>()) != "littlefs_json") {
-    return rejectLoad("invalid_schedule_config");
-  }
-  if (!schedule["events"].is<JsonArray>()) {
-    return rejectLoad("missing_schedule_events");
-  }
-  if (schedule["events"].as<JsonArray>().size() > 0) {
-    return rejectLoad("schedule_execution_not_supported_v0_1");
-  }
-  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
-    outConfig.scheduleEnabled[i] = schedule["enabled"].as<bool>();
+  String scheduleError;
+  if (!parseScheduleConfig(root["schedule"].as<JsonObject>(), outConfig, scheduleError)) {
+    return rejectLoad(scheduleError);
   }
 
   if (!root["astro"].is<JsonObject>()) {
@@ -175,6 +168,39 @@ bool ConfigStore::validate(const EzLightConfig& config, String& error) const {
   if (config.astroLocationSet && (config.latitude < -90.0 || config.latitude > 90.0 || config.longitude < -180.0 || config.longitude > 180.0)) {
     error = "invalid_astro_location";
     return false;
+  }
+  if (config.scheduleGloballyEnabled && config.scheduleRuleCount == 0) {
+    error = "missing_schedule_rules";
+    return false;
+  }
+  if (config.scheduleRuleCount > EZLIGHT_MAX_SCHEDULE_RULES) {
+    error = "too_many_schedule_rules";
+    return false;
+  }
+  bool usedRelayRules[EZLIGHT_RELAY_COUNT] = {false, false, false, false};
+  for (uint8_t i = 0; i < config.scheduleRuleCount; ++i) {
+    const FixedScheduleRule& rule = config.scheduleRules[i];
+    if (rule.relayIndex >= EZLIGHT_RELAY_COUNT) {
+      error = "unknown_schedule_relay";
+      return false;
+    }
+    if (config.modes[rule.relayIndex] == RelayMode::Disabled) {
+      error = "schedule_targets_disabled_relay";
+      return false;
+    }
+    if (config.modes[rule.relayIndex] != RelayMode::Schedule) {
+      error = "schedule_targets_non_schedule_relay";
+      return false;
+    }
+    if (usedRelayRules[rule.relayIndex]) {
+      error = "duplicate_schedule_rule";
+      return false;
+    }
+    if (rule.onMinute >= 1440 || rule.offMinute >= 1440 || rule.onMinute == rule.offMinute) {
+      error = "invalid_schedule_window";
+      return false;
+    }
+    usedRelayRules[rule.relayIndex] = true;
   }
   return true;
 }
@@ -245,6 +271,143 @@ bool ConfigStore::parseRelayConfig(JsonObject relay, uint8_t index, EzLightConfi
   config.relays[index].gpio = static_cast<uint8_t>(parsedGpio);
   config.relays[index].activeLow = relay["active_low"].as<bool>();
   config.modes[index] = mode;
+  return true;
+}
+
+bool ConfigStore::parseScheduleConfig(JsonObject schedule, EzLightConfig& config, String& error) const {
+  if (!schedule["enabled"].is<bool>()) {
+    error = "invalid_schedule_config";
+    return false;
+  }
+  if (!schedule["storage"].isNull() && (!schedule["storage"].is<const char*>() || String(schedule["storage"].as<const char*>()) != "littlefs_json")) {
+    error = "invalid_schedule_config";
+    return false;
+  }
+  if (!schedule["events"].isNull()) {
+    if (!schedule["events"].is<JsonArray>()) {
+      error = "missing_schedule_events";
+      return false;
+    }
+    if (schedule["events"].as<JsonArray>().size() > 0) {
+      error = "schedule_execution_not_supported_v0_1";
+      return false;
+    }
+  }
+
+  config.scheduleGloballyEnabled = schedule["enabled"].as<bool>();
+  config.scheduleRuleCount = 0;
+  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+    config.scheduleEnabled[i] = config.scheduleGloballyEnabled;
+  }
+
+  const bool hasRules = schedule["rules"].is<JsonArray>();
+  if (config.scheduleGloballyEnabled && !hasRules) {
+    error = "missing_schedule_rules";
+    return false;
+  }
+  if (!schedule["rules"].isNull() && !hasRules) {
+    error = "invalid_schedule_rules";
+    return false;
+  }
+  if (!hasRules) {
+    return true;
+  }
+
+  JsonArray rules = schedule["rules"].as<JsonArray>();
+  if (rules.size() > EZLIGHT_MAX_SCHEDULE_RULES) {
+    error = "too_many_schedule_rules";
+    return false;
+  }
+
+  bool usedRelayRules[EZLIGHT_RELAY_COUNT] = {false, false, false, false};
+  for (JsonVariant ruleVariant : rules) {
+    if (!ruleVariant.is<JsonObject>()) {
+      error = "invalid_schedule_rule";
+      return false;
+    }
+    if (!parseScheduleRule(ruleVariant.as<JsonObject>(), config, config.scheduleRuleCount, usedRelayRules, error)) {
+      return false;
+    }
+    config.scheduleRuleCount++;
+  }
+
+  if (config.scheduleGloballyEnabled && config.scheduleRuleCount == 0) {
+    error = "missing_schedule_rules";
+    return false;
+  }
+  return true;
+}
+
+bool ConfigStore::parseScheduleRule(JsonObject rule, EzLightConfig& config, uint8_t ruleIndex, bool usedRelayRules[EZLIGHT_RELAY_COUNT], String& error) const {
+  if (!rule["relay_id"].is<const char*>() || !rule["on"].is<const char*>() || !rule["off"].is<const char*>()) {
+    error = "invalid_schedule_rule";
+    return false;
+  }
+
+  const String relayId = rule["relay_id"].as<const char*>();
+  int relayIndex = -1;
+  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+    if (relayId == config.relays[i].id) {
+      relayIndex = i;
+      break;
+    }
+  }
+  if (relayIndex < 0) {
+    error = "unknown_schedule_relay";
+    return false;
+  }
+
+  if (config.modes[relayIndex] == RelayMode::Disabled) {
+    error = "schedule_targets_disabled_relay";
+    return false;
+  }
+  if (config.modes[relayIndex] != RelayMode::Schedule) {
+    error = "schedule_targets_non_schedule_relay";
+    return false;
+  }
+  if (usedRelayRules[relayIndex]) {
+    error = "duplicate_schedule_rule";
+    return false;
+  }
+
+  uint16_t onMinute = 0;
+  uint16_t offMinute = 0;
+  if (!parseTimeOfDay(rule["on"].as<const char*>(), onMinute) || !parseTimeOfDay(rule["off"].as<const char*>(), offMinute)) {
+    error = "invalid_schedule_time";
+    return false;
+  }
+  if (onMinute == offMinute) {
+    error = "invalid_schedule_window";
+    return false;
+  }
+
+  usedRelayRules[relayIndex] = true;
+  config.scheduleRules[ruleIndex] = {static_cast<uint8_t>(relayIndex), onMinute, offMinute};
+  return true;
+}
+
+bool ConfigStore::parseTimeOfDay(const char* value, uint16_t& minuteOfDay) const {
+  if (value == nullptr) {
+    return false;
+  }
+  const String text(value);
+  if (text.length() != 5 || text.charAt(2) != ':') {
+    return false;
+  }
+  for (uint8_t i = 0; i < 5; ++i) {
+    if (i == 2) {
+      continue;
+    }
+    if (!isDigit(text.charAt(i))) {
+      return false;
+    }
+  }
+  const int hour = text.substring(0, 2).toInt();
+  const int minute = text.substring(3, 5).toInt();
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return false;
+  }
+  minuteOfDay = static_cast<uint16_t>((hour * 60) + minute);
   return true;
 }
 

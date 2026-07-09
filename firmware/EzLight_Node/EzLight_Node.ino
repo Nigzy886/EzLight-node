@@ -64,6 +64,7 @@ void setup() {
   for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
     relays.setMode(activeConfig.relays[i].id, activeConfig.modes[i]);
   }
+  scheduleEngine.configure(activeConfig);
 
   connectWifiIfConfigured();
   timeService.beginNtp(configStore.current().timezone.c_str());

@@ -13,6 +13,6 @@ The helper mirrors the locked v0.1 validation rules from `firmware/EzLight_Node/
 - `valid_default_config.json` must pass.
 - Every `invalid_*.json` fixture must be rejected before any config is applied.
 - A missing `/config.json` is not represented as a file fixture; firmware treats that path as safe defaults with `config_loaded=false`.
-- Schedule execution, astro calculation, and config editing UI are intentionally not tested here because they are not part of v0.1.
+- Fixed HH:MM schedule rules are covered here; astro calculation and config editing UI remain intentionally out of scope.
 
 The helper is a host-side guardrail, not a replacement for compiling the Arduino firmware.

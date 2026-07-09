@@ -14,7 +14,10 @@ struct EzLightConfig {
   RelayDefinition relays[EZLIGHT_RELAY_COUNT];
   RelayMode modes[EZLIGHT_RELAY_COUNT];
   String timezone;
+  bool scheduleGloballyEnabled;
   bool scheduleEnabled[EZLIGHT_RELAY_COUNT];
+  FixedScheduleRule scheduleRules[EZLIGHT_MAX_SCHEDULE_RULES];
+  uint8_t scheduleRuleCount;
   bool astroLocationSet;
   double latitude;
   double longitude;
@@ -41,6 +44,9 @@ private:
 
   bool parseMode(const char* value, RelayMode& mode) const;
   bool parseRelayConfig(JsonObject relay, uint8_t index, EzLightConfig& config, String& error) const;
+  bool parseScheduleConfig(JsonObject schedule, EzLightConfig& config, String& error) const;
+  bool parseScheduleRule(JsonObject rule, EzLightConfig& config, uint8_t ruleIndex, bool usedRelayRules[EZLIGHT_RELAY_COUNT], String& error) const;
+  bool parseTimeOfDay(const char* value, uint16_t& minuteOfDay) const;
   bool rejectLoad(const String& error);
   bool validateRelayDefaults(const EzLightConfig& config, String& error) const;
 };
