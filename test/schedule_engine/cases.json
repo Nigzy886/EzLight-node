@@ -1,0 +1,139 @@
+{
+  "cases": [
+    {
+      "name": "same_day_before_on",
+      "time_valid": true,
+      "time": "17:59",
+      "mode": "schedule",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": true, "state": "off", "schedule_state": "scheduled_off", "next_event": "path_lights@18:00=on" }
+    },
+    {
+      "name": "same_day_at_on",
+      "time_valid": true,
+      "time": "18:00",
+      "mode": "schedule",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": true, "state": "on", "schedule_state": "scheduled_on", "next_event": "path_lights@22:30=off" }
+    },
+    {
+      "name": "same_day_inside",
+      "time_valid": true,
+      "time": "20:15",
+      "mode": "schedule",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": true, "state": "on", "schedule_state": "scheduled_on", "next_event": "path_lights@22:30=off" }
+    },
+    {
+      "name": "same_day_at_off",
+      "time_valid": true,
+      "time": "22:30",
+      "mode": "schedule",
+      "initial_on": true,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": true, "state": "off", "schedule_state": "scheduled_off", "next_event": "path_lights@18:00=on" }
+    },
+    {
+      "name": "same_day_after_off",
+      "time_valid": true,
+      "time": "22:31",
+      "mode": "schedule",
+      "initial_on": true,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": true, "state": "off", "schedule_state": "scheduled_off", "next_event": "path_lights@18:00=on" }
+    },
+    {
+      "name": "overnight_before_on",
+      "time_valid": true,
+      "time": "21:59",
+      "mode": "schedule",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "22:00", "off": "05:30" },
+      "expected": { "write": true, "state": "off", "schedule_state": "scheduled_off", "next_event": "path_lights@22:00=on" }
+    },
+    {
+      "name": "overnight_at_on",
+      "time_valid": true,
+      "time": "22:00",
+      "mode": "schedule",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "22:00", "off": "05:30" },
+      "expected": { "write": true, "state": "on", "schedule_state": "scheduled_on", "next_event": "path_lights@05:30=off" }
+    },
+    {
+      "name": "overnight_late_night",
+      "time_valid": true,
+      "time": "23:59",
+      "mode": "schedule",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "22:00", "off": "05:30" },
+      "expected": { "write": true, "state": "on", "schedule_state": "scheduled_on", "next_event": "path_lights@05:30=off" }
+    },
+    {
+      "name": "overnight_after_midnight",
+      "time_valid": true,
+      "time": "02:00",
+      "mode": "schedule",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "22:00", "off": "05:30" },
+      "expected": { "write": true, "state": "on", "schedule_state": "scheduled_on", "next_event": "path_lights@05:30=off" }
+    },
+    {
+      "name": "overnight_at_off",
+      "time_valid": true,
+      "time": "05:30",
+      "mode": "schedule",
+      "initial_on": true,
+      "rule": { "relay_id": "path_lights", "on": "22:00", "off": "05:30" },
+      "expected": { "write": true, "state": "off", "schedule_state": "scheduled_off", "next_event": "path_lights@22:00=on" }
+    },
+    {
+      "name": "overnight_after_off",
+      "time_valid": true,
+      "time": "05:31",
+      "mode": "schedule",
+      "initial_on": true,
+      "rule": { "relay_id": "path_lights", "on": "22:00", "off": "05:30" },
+      "expected": { "write": true, "state": "off", "schedule_state": "scheduled_off", "next_event": "path_lights@22:00=on" }
+    },
+    {
+      "name": "time_invalid_hold",
+      "time_valid": false,
+      "time": "20:15",
+      "mode": "schedule",
+      "initial_on": true,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": false, "state": "on", "schedule_state": "paused_time_invalid", "next_event": "time_invalid" }
+    },
+    {
+      "name": "manual_relay_untouched",
+      "time_valid": true,
+      "time": "20:15",
+      "mode": "manual",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": false, "state": "off", "schedule_state": "manual", "next_event": "none" }
+    },
+    {
+      "name": "disabled_relay_untouched",
+      "time_valid": true,
+      "time": "20:15",
+      "mode": "disabled",
+      "initial_on": false,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": false, "state": "off", "schedule_state": "disabled", "next_event": "none" }
+    },
+    {
+      "name": "astro_relay_untouched",
+      "time_valid": true,
+      "time": "20:15",
+      "mode": "astro",
+      "initial_on": true,
+      "rule": { "relay_id": "path_lights", "on": "18:00", "off": "22:30" },
+      "expected": { "write": false, "state": "on", "schedule_state": "astro", "next_event": "none" }
+    }
+  ]
+}
