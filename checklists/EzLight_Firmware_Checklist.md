@@ -46,4 +46,5 @@
 ## Bench Test Gate
 
 - Complete `docs/Bench_Test_Readiness.md` before connecting real relay hardware.
+- Complete `docs/Physical_Bench_Test_Procedure.md` on a real bench with no mains connected before connecting real relay hardware.
 - Do not connect mains or outdoor lighting until relay/contactors, enclosure, fusing, isolation, and wiring boundaries are handled properly by a qualified person where required.
