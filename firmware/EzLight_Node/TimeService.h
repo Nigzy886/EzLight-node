@@ -11,7 +11,9 @@ public:
   const TimeStatus& status() const;
   bool valid() const;
   String isoNow() const;
+  const String& timezone() const;
 
 private:
   TimeStatus _status;
+  String _timezone;
 };
