@@ -1,85 +1,401 @@
 #include "CommandHandler.h"
+
+#include <ArduinoJson.h>
+#include <LittleFS.h>
+
 #include "EzLightTypes.h"
 
-CommandHandler::CommandHandler(RelayDriver& relays, OverrideManager& overrides, AstroEngine& astro, ConfigStore& config, TimeService& timeService) : _relays(relays), _overrides(overrides), _astro(astro), _config(config), _timeService(timeService) {}
+namespace {
+String jsonEscape(String value) {
+  value.replace("\\", "\\\\");
+  value.replace("\"", "\\\"");
+  value.replace("\n", "\\n");
+  value.replace("\r", "\\r");
+  return value;
+}
 
-String CommandHandler::handle(const String& body) {
-  const String msgId = extractString(body, "msg_id");
-  const String nodeId = extractString(body, "node_id");
-  const String target = extractString(body, "target");
-  const String action = extractString(body, "action");
-  if (msgId.length() == 0) { return nack("", "invalid_args"); }
-  if (nodeId.length() > 0 && nodeId != EZLIGHT_NODE_ID) { return nack(msgId, "wrong_target"); }
-  if (!declared(target, action)) { return nack(msgId, action.length() == 0 ? "unknown_action" : "not_declared"); }
+String quote(const String& value) {
+  return "\"" + jsonEscape(value) + "\"";
+}
+
+String stringValue(JsonObject object, const char* key) {
+  return object[key].is<const char*>() ? String(object[key].as<const char*>()) : String();
+}
+
+const char* astroEventToString(AstroEvent event) {
+  return event == AstroEvent::CivilDawn ? "civil_dawn" : "civil_dusk";
+}
+
+String minuteToText(uint16_t minuteOfDay) {
+  char buffer[6];
+  snprintf(buffer, sizeof(buffer), "%02u:%02u", minuteOfDay / 60, minuteOfDay % 60);
+  return String(buffer);
+}
+}  // namespace
+
+CommandHandler::CommandHandler(RelayDriver& relays, OverrideManager& overrides, AstroEngine& astro, ConfigStore& config, ScheduleEngine& schedule, TimeService& timeService)
+  : _relays(relays),
+    _overrides(overrides),
+    _astro(astro),
+    _config(config),
+    _schedule(schedule),
+    _timeService(timeService),
+    _rebootRequested(false) {}
+
+String CommandHandler::handle(const String& body, const String& nodeId) {
+  JsonDocument doc;
+  const DeserializationError parseError = deserializeJson(doc, body);
+  if (parseError || !doc.is<JsonObject>()) {
+    return nack("", "invalid_args");
+  }
+
+  JsonObject root = doc.as<JsonObject>();
+  const String eco = stringValue(root, "eco");
+  const String type = stringValue(root, "type");
+  const String msgId = stringValue(root, "msg_id");
+  const String targetNodeId = stringValue(root, "node_id");
+  const String target = stringValue(root, "target");
+  const String action = stringValue(root, "action");
+
+  if ((eco.length() > 0 && eco != "easysystems") || (type.length() > 0 && type != "cmd")) {
+    return remember(msgId, nack(msgId, "invalid_args"));
+  }
+  if (msgId.length() == 0 || targetNodeId.length() == 0 || target.length() == 0 || action.length() == 0) {
+    return remember(msgId, nack(msgId, "invalid_args"));
+  }
+  if (targetNodeId != nodeId) {
+    return remember(msgId, nack(msgId, "wrong_target"));
+  }
+  if (msgId == _lastMsgId && _lastAck.length() > 0) {
+    return _lastAck;
+  }
+  if (!declared(target, action)) {
+    return remember(msgId, nack(msgId, "not_declared"));
+  }
+
+  JsonObject params = root["params"].as<JsonObject>();
+  if (params.isNull()) {
+    params = root;
+  }
+
   if (target == "relay" && action == "set") {
-    const String relayId = extractString(body, "relay_id");
-    const bool state = extractBool(body, "state", false);
+    const String relayId = stringValue(params, "relay_id");
+    JsonVariant stateValue = params["state"];
+    if (stateValue.isNull()) {
+      stateValue = params["value"];
+    }
     const int index = _relays.indexOf(relayId);
-    if (index < 0) { return nack(msgId, "invalid_args"); }
-    if (_relays.mode(index) == RelayMode::Disabled) { return nack(msgId, "unsafe_state"); }
-    if (!_relays.setRelay(relayId, state)) { return nack(msgId, "invalid_args"); }
-    return ack(msgId, {true, "accepted", nullptr, String("{\"relay_id\":\"") + relayId + "\",\"relay_state\":" + (state ? "true" : "false") + "}"});
+    if (index < 0 || !stateValue.is<bool>()) {
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+    if (_relays.mode(index) == RelayMode::Disabled) {
+      return remember(msgId, nack(msgId, "unsafe_state"));
+    }
+
+    const bool requestedState = stateValue.as<bool>();
+    if (!_relays.setRelay(relayId, requestedState)) {
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+    return remember(msgId, ack(msgId, {true, "accepted", nullptr, String("{\"relay_id\":") + quote(relayId) + ",\"relay_state\":" + (requestedState ? "true" : "false") + "}"}));
   }
+
   if (target == "relay" && action == "toggle") {
-    const String relayId = extractString(body, "relay_id");
+    const String relayId = stringValue(params, "relay_id");
     const int index = _relays.indexOf(relayId);
-    if (index < 0) { return nack(msgId, "invalid_args"); }
-    if (_relays.mode(index) == RelayMode::Disabled) { return nack(msgId, "unsafe_state"); }
-    _relays.toggleRelay(relayId);
-    return ack(msgId, {true, "accepted", nullptr, String("{\"relay_id\":\"") + relayId + "\",\"relay_state\":" + (_relays.logicalState(index) ? "true" : "false") + "}"});
+    if (index < 0) {
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+    if (_relays.mode(index) == RelayMode::Disabled) {
+      return remember(msgId, nack(msgId, "unsafe_state"));
+    }
+    if (!_relays.toggleRelay(relayId)) {
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+    return remember(msgId, ack(msgId, {true, "accepted", nullptr, String("{\"relay_id\":") + quote(relayId) + ",\"relay_state\":" + (_relays.logicalState(index) ? "true" : "false") + "}"}));
   }
-  if (target == "relay" && action == "override") { return ack(msgId, _overrides.applyOverride(extractString(body, "relay_id"), extractString(body, "override_mode"), _relays)); }
-  if (target == "relay" && action == "resume_schedule") { return ack(msgId, _overrides.resumeSchedule(extractString(body, "relay_id"), _relays)); }
-  if (target == "astro" && action == "set_location") { return nack(msgId, "invalid_args"); }
+
+  if (target == "relay" && action == "override") {
+    const CommandResult result = _overrides.applyOverride(stringValue(params, "relay_id"), stringValue(params, "override_mode"), _relays);
+    return remember(msgId, ack(msgId, result));
+  }
+
+  if (target == "relay" && action == "resume_schedule") {
+    const CommandResult result = _overrides.resumeSchedule(stringValue(params, "relay_id"), _relays);
+    return remember(msgId, ack(msgId, result));
+  }
+
+  if (target == "schedule" && action == "set") {
+    if (!params["enabled"].is<bool>() || !params["rules"].is<JsonArray>()) {
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+
+    JsonArray rules = params["rules"].as<JsonArray>();
+    if (rules.size() > EZLIGHT_MAX_SCHEDULE_RULES) {
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+
+    EzLightConfig candidate = _config.current();
+    candidate.scheduleGloballyEnabled = params["enabled"].as<bool>();
+    candidate.scheduleRuleCount = 0;
+    bool usedRelays[EZLIGHT_RELAY_COUNT] = {false, false, false, false};
+
+    for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+      candidate.scheduleEnabled[i] = false;
+      if (candidate.modes[i] == RelayMode::Schedule) {
+        candidate.modes[i] = RelayMode::Manual;
+      }
+    }
+
+    for (JsonVariant ruleVariant : rules) {
+      if (!ruleVariant.is<JsonObject>()) {
+        return remember(msgId, nack(msgId, "invalid_args"));
+      }
+      JsonObject rule = ruleVariant.as<JsonObject>();
+      const String relayId = stringValue(rule, "relay_id");
+      const String onText = stringValue(rule, "on");
+      const String offText = stringValue(rule, "off");
+      const int index = relayIndex(relayId, candidate);
+      uint16_t onMinute = 0;
+      uint16_t offMinute = 0;
+
+      if (index < 0 || usedRelays[index] || !parseTimeOfDay(onText, onMinute) || !parseTimeOfDay(offText, offMinute) || onMinute == offMinute) {
+        return remember(msgId, nack(msgId, "invalid_args"));
+      }
+
+      usedRelays[index] = true;
+      candidate.modes[index] = RelayMode::Schedule;
+      candidate.scheduleEnabled[index] = true;
+      candidate.scheduleRules[candidate.scheduleRuleCount++] = {static_cast<uint8_t>(index), onMinute, offMinute};
+    }
+
+    String configError;
+    if (!persistConfig(candidate, configError)) {
+      Serial.println("schedule.set rejected: " + configError);
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+    applyConfigToRuntime(candidate);
+    return remember(msgId, ack(msgId, {true, "accepted", nullptr, String("{\"schedule_enabled\":") + (candidate.scheduleGloballyEnabled ? "true" : "false") + ",\"rule_count\":" + String(candidate.scheduleRuleCount) + "}"}));
+  }
+
+  if (target == "schedule" && (action == "enable" || action == "disable")) {
+    EzLightConfig candidate = _config.current();
+    candidate.scheduleGloballyEnabled = action == "enable";
+
+    String configError;
+    if (!persistConfig(candidate, configError)) {
+      Serial.println("schedule command rejected: " + configError);
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+    applyConfigToRuntime(candidate);
+    return remember(msgId, ack(msgId, {true, "accepted", nullptr, String("{\"schedule_enabled\":") + (candidate.scheduleGloballyEnabled ? "true" : "false") + "}"}));
+  }
+
+  if (target == "astro" && action == "set_location") {
+    const JsonVariant latitudeValue = params["latitude"];
+    const JsonVariant longitudeValue = params["longitude"];
+    if (!latitudeValue.is<double>() || !longitudeValue.is<double>()) {
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+
+    const double latitude = latitudeValue.as<double>();
+    const double longitude = longitudeValue.as<double>();
+    if (latitude < -90.0 || latitude > 90.0 || longitude < -180.0 || longitude > 180.0) {
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+
+    EzLightConfig candidate = _config.current();
+    candidate.astroLocationSet = true;
+    candidate.latitude = latitude;
+    candidate.longitude = longitude;
+
+    String configError;
+    if (!persistConfig(candidate, configError)) {
+      Serial.println("astro.set_location rejected: " + configError);
+      return remember(msgId, nack(msgId, "invalid_args"));
+    }
+    applyConfigToRuntime(candidate);
+    _astro.recalculate(_timeService.valid());
+    return remember(msgId, ack(msgId, {true, "accepted", nullptr, String("{\"latitude\":") + String(latitude, 6) + ",\"longitude\":" + String(longitude, 6) + "}"}));
+  }
+
   if (target == "astro" && action == "recalculate") {
     if (!_timeService.valid()) {
-      return nack(msgId, "unsafe_state");
+      return remember(msgId, nack(msgId, "unsafe_state"));
     }
     if (!_astro.hasLocation()) {
-      return nack(msgId, "invalid_args");
+      return remember(msgId, nack(msgId, "invalid_args"));
     }
     _astro.recalculate(true);
-    return ack(msgId, {true, "accepted", nullptr, "{\"astro\":\"recalculate_requested\"}"});
+    return remember(msgId, ack(msgId, {true, "accepted", nullptr, "{\"astro\":\"recalculated\"}"}));
   }
-  if (target == "schedule" && (action == "set" || action == "enable" || action == "disable")) { return ack(msgId, {true, "accepted", nullptr, String("{\"schedule\":\"") + action + "_pending\"}"}); }
-  if (target == "node" && action == "reboot") { return ack(msgId, {true, "accepted", nullptr, "{\"node\":\"reboot_pending\"}"}); }
-  return nack(msgId, "unknown_action");
+
+  if (target == "node" && action == "reboot") {
+    _rebootRequested = true;
+    return remember(msgId, ack(msgId, {true, "accepted", nullptr, "{\"node\":\"rebooting\"}"}));
+  }
+
+  return remember(msgId, nack(msgId, "unknown_action"));
+}
+
+bool CommandHandler::takeRebootRequested() {
+  const bool requested = _rebootRequested;
+  _rebootRequested = false;
+  return requested;
 }
 
 bool CommandHandler::declared(const String& target, const String& action) const {
-  if (target == "relay" && (action == "set" || action == "toggle" || action == "override" || action == "resume_schedule")) { return true; }
-  if (target == "schedule" && (action == "set" || action == "enable" || action == "disable")) { return true; }
-  if (target == "astro" && (action == "set_location" || action == "recalculate")) { return true; }
-  if (target == "node" && action == "reboot") { return true; }
-  return false;
+  if (target == "relay" && (action == "set" || action == "toggle" || action == "override" || action == "resume_schedule")) {
+    return true;
+  }
+  if (target == "schedule" && (action == "set" || action == "enable" || action == "disable")) {
+    return true;
+  }
+  if (target == "astro" && (action == "set_location" || action == "recalculate")) {
+    return true;
+  }
+  return target == "node" && action == "reboot";
 }
 
-String CommandHandler::extractString(const String& body, const String& key) const {
-  const String needle = String("\"") + key + "\"";
-  int pos = body.indexOf(needle);
-  if (pos < 0) { return ""; }
-  pos = body.indexOf(':', pos);
-  pos = body.indexOf('"', pos);
-  if (pos < 0) { return ""; }
-  const int end = body.indexOf('"', pos + 1);
-  if (end < 0) { return ""; }
-  return body.substring(pos + 1, end);
-}
-
-bool CommandHandler::extractBool(const String& body, const String& key, bool defaultValue) const {
-  const String needle = String("\"") + key + "\"";
-  int pos = body.indexOf(needle);
-  if (pos < 0) { return defaultValue; }
-  pos = body.indexOf(':', pos);
-  if (pos < 0) { return defaultValue; }
-  return body.substring(pos + 1).indexOf("true") >= 0;
+String CommandHandler::remember(const String& msgId, const String& response) {
+  if (msgId.length() > 0) {
+    _lastMsgId = msgId;
+    _lastAck = response;
+  }
+  return response;
 }
 
 String CommandHandler::ack(const String& refMsgId, const CommandResult& result) const {
-  if (!result.ok) { return nack(refMsgId, result.error ? result.error : "invalid_args"); }
-  return String("{\"type\":\"ack\",\"ref_msg_id\":\"") + refMsgId + "\",\"ok\":true,\"status\":\"" + result.status + "\",\"result\":" + (result.resultJson.length() ? result.resultJson : "{}") + "}";
+  if (!result.ok) {
+    return nack(refMsgId, result.error ? result.error : "invalid_args");
+  }
+  return String("{\"eco\":\"easysystems\",\"type\":\"ack\",\"ref_msg_id\":") + quote(refMsgId) + ",\"ok\":true,\"status\":" + quote(result.status ? result.status : "accepted") + ",\"result\":" + (result.resultJson.length() ? result.resultJson : "{}") + "}";
 }
 
 String CommandHandler::nack(const String& refMsgId, const char* error) const {
-  return String("{\"type\":\"ack\",\"ref_msg_id\":\"") + refMsgId + "\",\"ok\":false,\"status\":\"rejected\",\"error\":\"" + error + "\"}";
+  return String("{\"eco\":\"easysystems\",\"type\":\"ack\",\"ref_msg_id\":") + quote(refMsgId) + ",\"ok\":false,\"status\":\"rejected\",\"error\":" + quote(error ? error : "invalid_args") + "}";
+}
+
+bool CommandHandler::persistConfig(const EzLightConfig& candidate, String& error) {
+  if (!_config.validate(candidate, error)) {
+    return false;
+  }
+
+  JsonDocument doc;
+  doc["node_id"] = candidate.nodeId;
+  doc["node_type"] = candidate.nodeType;
+  doc["profile"] = candidate.profile;
+  doc["timezone"] = candidate.timezone;
+  doc["time_source"] = candidate.timeSource;
+  doc["rtc_required"] = candidate.rtcRequired;
+  doc["astro_convention"] = candidate.astroConvention;
+
+  JsonArray relays = doc["relays"].to<JsonArray>();
+  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+    JsonObject relay = relays.add<JsonObject>();
+    relay["id"] = candidate.relays[i].id;
+    relay["label"] = candidate.relays[i].label;
+    relay["gpio"] = candidate.relays[i].gpio;
+    relay["active_low"] = candidate.relays[i].activeLow;
+    relay["mode"] = relayModeToString(candidate.modes[i]);
+  }
+
+  JsonObject schedule = doc["schedule"].to<JsonObject>();
+  schedule["enabled"] = candidate.scheduleGloballyEnabled;
+  schedule["storage"] = "littlefs_json";
+  JsonArray scheduleRules = schedule["rules"].to<JsonArray>();
+  for (uint8_t i = 0; i < candidate.scheduleRuleCount; ++i) {
+    const FixedScheduleRule& rule = candidate.scheduleRules[i];
+    JsonObject outputRule = scheduleRules.add<JsonObject>();
+    outputRule["relay_id"] = candidate.relays[rule.relayIndex].id;
+    outputRule["on"] = minuteToText(rule.onMinute);
+    outputRule["off"] = minuteToText(rule.offMinute);
+  }
+
+  JsonObject astro = doc["astro"].to<JsonObject>();
+  astro["location_set"] = candidate.astroLocationSet;
+  if (candidate.astroLocationSet) {
+    astro["latitude"] = candidate.latitude;
+    astro["longitude"] = candidate.longitude;
+  }
+  JsonArray astroRules = astro["rules"].to<JsonArray>();
+  for (uint8_t i = 0; i < candidate.astroRuleCount; ++i) {
+    const AstroRule& rule = candidate.astroRules[i];
+    JsonObject outputRule = astroRules.add<JsonObject>();
+    outputRule["relay_id"] = candidate.relays[rule.relayIndex].id;
+    outputRule["on"] = astroEventToString(rule.onEvent);
+    outputRule["off"] = astroEventToString(rule.offEvent);
+  }
+
+  File tempFile = LittleFS.open("/config.tmp", "w");
+  if (!tempFile) {
+    error = "config_open_failed";
+    return false;
+  }
+  if (serializeJson(doc, tempFile) == 0) {
+    tempFile.close();
+    LittleFS.remove("/config.tmp");
+    error = "config_write_failed";
+    return false;
+  }
+  tempFile.flush();
+  tempFile.close();
+
+  LittleFS.remove("/config.bak");
+  const bool hadExisting = LittleFS.exists("/config.json");
+  if (hadExisting && !LittleFS.rename("/config.json", "/config.bak")) {
+    LittleFS.remove("/config.tmp");
+    error = "config_backup_failed";
+    return false;
+  }
+  if (!LittleFS.rename("/config.tmp", "/config.json")) {
+    if (hadExisting) {
+      LittleFS.rename("/config.bak", "/config.json");
+    }
+    error = "config_replace_failed";
+    return false;
+  }
+  LittleFS.remove("/config.bak");
+
+  if (!_config.applyPersistedIfValid(candidate, error)) {
+    return false;
+  }
+  return true;
+}
+
+void CommandHandler::applyConfigToRuntime(const EzLightConfig& config) {
+  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+    _relays.setMode(config.relays[i].id, config.modes[i]);
+  }
+  _schedule.configure(config);
+  _astro.configure(config);
+}
+
+bool CommandHandler::parseTimeOfDay(const String& value, uint16_t& minuteOfDay) const {
+  if (value.length() != 5 || value.charAt(2) != ':') {
+    return false;
+  }
+  for (uint8_t i = 0; i < 5; ++i) {
+    if (i == 2) {
+      continue;
+    }
+    if (!isDigit(value.charAt(i))) {
+      return false;
+    }
+  }
+  const int hour = value.substring(0, 2).toInt();
+  const int minute = value.substring(3, 5).toInt();
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return false;
+  }
+  minuteOfDay = static_cast<uint16_t>((hour * 60) + minute);
+  return true;
+}
+
+int CommandHandler::relayIndex(const String& relayId, const EzLightConfig& config) const {
+  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+    if (relayId == config.relays[i].id) {
+      return i;
+    }
+  }
+  return -1;
 }
