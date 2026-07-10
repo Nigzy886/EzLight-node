@@ -32,6 +32,8 @@ String TelemetryReporter::stateJson(const String& nodeId, bool provisioned, cons
   }
   json += "},";
   json += "\"time_valid\":" + String(timeService.valid() ? "true" : "false") + ",";
+  json += "\"current_time\":" + quote(timeService.isoNow()) + ",";
+  json += "\"timezone\":" + quote(timeService.timezone()) + ",";
   json += "\"next_event\":" + quote(schedule.nextEvent()) + ",";
   json += "\"dusk_time\":" + quote(astro.duskTime()) + ",";
   json += "\"dawn_time\":" + quote(astro.dawnTime()) + ",";
