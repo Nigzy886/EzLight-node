@@ -1,4 +1,4 @@
-﻿#include "TimeService.h"
+#include "TimeService.h"
 #include <time.h>
 
 TimeService::TimeService() : _status{false, false, false, "time_not_synced"} {}

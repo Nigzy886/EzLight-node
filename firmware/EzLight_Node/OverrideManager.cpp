@@ -1,4 +1,4 @@
-﻿#include "OverrideManager.h"
+#include "OverrideManager.h"
 
 CommandResult OverrideManager::applyOverride(const String& relayId, const String& overrideMode, RelayDriver& relays) {
   if (!relays.isKnownRelay(relayId)) {

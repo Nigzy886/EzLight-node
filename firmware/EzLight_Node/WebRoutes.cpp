@@ -1,4 +1,4 @@
-﻿#include "WebRoutes.h"
+#include "WebRoutes.h"
 #include <WiFi.h>
 
 WebRoutes::WebRoutes(WebServer& server, EzHubCapabilities& capabilities, TelemetryReporter& telemetry, CommandHandler& commands, RelayDriver& relays, ScheduleEngine& schedule, AstroEngine& astro, TimeService& timeService, ConfigStore& configStore)

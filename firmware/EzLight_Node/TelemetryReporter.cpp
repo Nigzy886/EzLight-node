@@ -1,4 +1,4 @@
-﻿#include "TelemetryReporter.h"
+#include "TelemetryReporter.h"
 #include "EzLightTypes.h"
 
 String TelemetryReporter::stateJson(const RelayDriver& relays, const ScheduleEngine& schedule, const AstroEngine& astro, const TimeService& timeService) const {

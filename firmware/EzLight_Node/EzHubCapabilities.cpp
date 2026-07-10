@@ -1,4 +1,4 @@
-﻿#include "EzHubCapabilities.h"
+#include "EzHubCapabilities.h"
 #include "EzLightTypes.h"
 
 String EzHubCapabilities::helloJson(const String& ipAddress, const String& hostName) const {

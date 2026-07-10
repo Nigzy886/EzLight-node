@@ -1,4 +1,4 @@
-﻿#include "CommandHandler.h"
+#include "CommandHandler.h"
 #include "EzLightTypes.h"
 
 CommandHandler::CommandHandler(RelayDriver& relays, OverrideManager& overrides, AstroEngine& astro, ConfigStore& config, TimeService& timeService) : _relays(relays), _overrides(overrides), _astro(astro), _config(config), _timeService(timeService) {}

@@ -1,4 +1,4 @@
-﻿#include "RelayDriver.h"
+#include "RelayDriver.h"
 
 RelayDriver::RelayDriver()
   : _defs{{"path_lights", "Path lights", 14, true}, {"driveway_lights", "Driveway lights", 27, true}, {"entrance_lights", "Entrance lights", 26, true}, {"spare_lights", "Spare lights", 25, true}}, _states{} {
