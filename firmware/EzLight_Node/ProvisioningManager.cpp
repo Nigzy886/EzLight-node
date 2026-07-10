@@ -51,7 +51,12 @@ void ProvisioningManager::begin() {
   _instance = this;
   loadProvisioning();
 
+  // EzLight is mains-powered and prioritises deterministic HTTP/ESP-NOW
+  // responsiveness over station power saving. Static buffers must be selected
+  // before the Wi-Fi driver is started.
+  WiFi.useStaticBuffers(true);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.setHostname(_hostName.c_str());
   startEspNow();
 
@@ -151,6 +156,7 @@ bool ProvisioningManager::startEspNow() {
   }
 
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   if (esp_now_init() != ESP_OK) {
     Serial.println("ESP-NOW init failed");
     return false;
@@ -175,6 +181,7 @@ bool ProvisioningManager::connectWifi(uint32_t timeoutMs) {
   }
 
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.setHostname(_hostName.c_str());
   WiFi.begin(_ssid.c_str(), _pass.c_str());
 
@@ -187,6 +194,9 @@ bool ProvisioningManager::connectWifi(uint32_t timeoutMs) {
     Serial.println("Provisioned Wi-Fi connection failed");
     return false;
   }
+
+  // Re-apply after association so reconnects cannot restore modem power save.
+  WiFi.setSleep(false);
 
   const int liveChannel = WiFi.channel();
   if (liveChannel > 0 && liveChannel != _savedWifiChannel) {
