@@ -67,7 +67,7 @@ String EzHubCapabilities::capabilitiesJson(const String& nodeId, const String& i
   json += "],";
 
   json += "\"routes\":[\"/\",\"/status\",\"/api/hello\",\"/api/capabilities\",\"/api/state\",\"/api/cmd\"],";
-  json += "\"reporting\":{\"state_fields\":[\"relay_state\",\"schedule_state\",\"time_valid\",\"next_event\",\"dusk_time\",\"dawn_time\",\"uptime\",\"provisioned\",\"wifi_rssi\"],\"state_interval_seconds\":30},";
+  json += "\"reporting\":{\"state_fields\":[\"relay_state\",\"schedule_state\",\"time_valid\",\"current_time\",\"timezone\",\"next_event\",\"dusk_time\",\"dawn_time\",\"uptime\",\"provisioned\",\"wifi_rssi\"],\"state_interval_seconds\":30},";
   json += "\"rendering\":{\"dashboard\":\"outdoor_lighting\"},";
   json += "\"safety\":{\"boot_relays_forced_off\":true,\"default_relay_active_low\":true,\"active_low_off_level\":\"GPIO_HIGH\",\"schedules_require_valid_time\":true,\"undeclared_commands_rejected\":true,\"disabled_relays_reject_manual_commands\":true,\"reboot_ack_before_restart\":true},";
   json += "\"extensions\":{\"ezsystems.ezlight\":{\"board\":\"ESP32-WROOM DevKit / ESP32 Dev Module\",\"build_system\":\"arduino-cli / Arduino framework\",\"relay_count\":4,\"time_source\":\"ntp\",\"rtc_required\":false,\"astro_convention\":\"civil_dusk_civil_dawn\",\"config_storage\":\"littlefs_json\",\"commissioning\":\"esp_now_v1\",\"standards_baseline\":\"v1.1.5\"}}";
