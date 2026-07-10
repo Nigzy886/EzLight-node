@@ -8,6 +8,7 @@ public:
   RelayDriver();
 
   void beginSafe();
+  void allOff();
   bool setRelay(const String& relayId, bool on);
   bool toggleRelay(const String& relayId);
   bool isKnownRelay(const String& relayId) const;
