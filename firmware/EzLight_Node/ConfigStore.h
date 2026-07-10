@@ -33,6 +33,14 @@ public:
   bool load(EzLightConfig& outConfig);
   bool validate(const EzLightConfig& config, String& error) const;
   bool applyIfValid(const EzLightConfig& candidate, String& error);
+  bool applyPersistedIfValid(const EzLightConfig& candidate, String& error) {
+    if (!applyIfValid(candidate, error)) {
+      return false;
+    }
+    _configSource = "/config.json";
+    _configLoaded = true;
+    return true;
+  }
   const EzLightConfig& current() const;
   const String& lastError() const;
   const String& configSource() const;
