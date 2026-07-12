@@ -2,7 +2,7 @@
 
 EzSystems-managed outdoor lighting controller for an ESP32-WROOM DevKit / ESP32 Dev Module with four active-low relay outputs.
 
-The current firmware target is `0.2.0-managed`. It implements the EzSystems managed-node transport and API foundation, but it must still pass the documented physical bench-test gate before use with real relay loads.
+The current firmware target is `0.2.1-managed`. It implements the EzSystems managed-node transport and API foundation, but it must still pass the documented physical bench-test gate before use with real relay loads.
 
 ## Standards baseline
 
@@ -30,6 +30,8 @@ C:\Users\Bass\Desktop\GITHUB\EzSystems-standards
 - Provisioned nodes connect to router Wi-Fi, advertise mDNS, send a fresh bootstrap `hello`, and expose authoritative HTTP APIs.
 - `POST /api/cmd` requires `node_id`, `msg_id`, `target`, and `action`.
 - Declared commands return application ACKs and duplicate `msg_id` requests are deduplicated.
+- `relay.set_mode` persists `manual` or `disabled`; every mode change forces that relay OFF before the configuration is written.
+- `astro.set_rules` validates and persists complete civil-dusk/civil-dawn rule replacements.
 - `node/reboot` forces all relays OFF, sends its ACK, waits briefly, and then restarts.
 
 ## Authoritative HTTP APIs
