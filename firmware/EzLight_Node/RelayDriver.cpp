@@ -22,6 +22,14 @@ void RelayDriver::beginSafe() {
   }
 }
 
+void RelayDriver::allOff() {
+  for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
+    writePhysical(i, false);
+    _states[i].overrideMode = OverrideMode::None;
+    _states[i].overrideExpiresAtMs = 0;
+  }
+}
+
 bool RelayDriver::setRelay(const String& relayId, bool on) {
   const int index = indexOf(relayId);
   if (index < 0 || _states[index].mode == RelayMode::Disabled) {
@@ -59,6 +67,13 @@ bool RelayDriver::setMode(const String& relayId, RelayMode mode) {
   if (index < 0) {
     return false;
   }
+
+  // Ownership changes between manual, schedule, astro, and disabled are
+  // fail-safe. Release the output before the new mode can take control.
+  if (_states[index].mode != mode) {
+    writePhysical(static_cast<uint8_t>(index), false);
+  }
+
   _states[index].mode = mode;
   if (mode == RelayMode::Disabled) {
     writePhysical(static_cast<uint8_t>(index), false);

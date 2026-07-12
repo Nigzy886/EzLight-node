@@ -1,0 +1,30 @@
+name: Firmware compile
+
+on:
+  push:
+    branches:
+      - main
+      - codex-ezsystems-compliance
+  pull_request:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware-compile.yml"
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core and libraries
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install ArduinoJson
+
+      - name: Compile EzLight firmware
+        run: arduino-cli compile --warnings all --fqbn esp32:esp32:esp32 firmware/EzLight_Node

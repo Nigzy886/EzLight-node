@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <WiFi.h>
 #include <WebServer.h>
 
 #include "RelayDriver.h"
@@ -11,6 +10,7 @@
 #include "EzHubCapabilities.h"
 #include "CommandHandler.h"
 #include "TelemetryReporter.h"
+#include "ProvisioningManager.h"
 #include "WebRoutes.h"
 
 RelayDriver relays;
@@ -21,33 +21,21 @@ AstroEngine astroEngine;
 OverrideManager overrideManager;
 EzHubCapabilities capabilities;
 TelemetryReporter telemetryReporter;
+ProvisioningManager provisioning;
 WebServer server(80);
-CommandHandler commandHandler(relays, overrideManager, astroEngine, configStore, timeService);
-WebRoutes webRoutes(server, capabilities, telemetryReporter, commandHandler, relays, scheduleEngine, astroEngine, timeService, configStore);
+CommandHandler commandHandler(relays, overrideManager, astroEngine, configStore, scheduleEngine, timeService);
+WebRoutes webRoutes(server, capabilities, telemetryReporter, commandHandler, relays, scheduleEngine, astroEngine, timeService, configStore, provisioning);
 
-const char* WIFI_SSID = ""; // TODO: Load Wi-Fi credentials from EzHub provisioning or local secure config.
-const char* WIFI_PASS = "";
-
-void connectWifiIfConfigured() {
-  if (String(WIFI_SSID).length() == 0) {
-    Serial.println("Wi-Fi not configured; status page starts after credentials are provided.");
-    return;
-  }
-  WiFi.mode(WIFI_STA);
-  WiFi.setHostname("ezlight-001");
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  const unsigned long startedAt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < 10000UL) {
-    delay(100);
-  }
-}
+bool ntpStarted = false;
 
 void setup() {
   // Absolute first hardware action: all relay pins are written OFF before OUTPUT.
   relays.beginSafe();
 
   Serial.begin(115200);
-  Serial.println("EzLight-node v0.1 skeleton booting with relays forced OFF");
+  delay(100);
+  Serial.println();
+  Serial.println("EzLight-node managed boot with relays forced OFF");
 
   const bool configStoreOk = configStore.begin();
   EzLightConfig candidate;
@@ -60,6 +48,7 @@ void setup() {
     Serial.print("Config rejected before apply: ");
     Serial.println(configStore.lastError());
   }
+
   const EzLightConfig& activeConfig = configStore.current();
   for (uint8_t i = 0; i < EZLIGHT_RELAY_COUNT; ++i) {
     relays.setMode(activeConfig.relays[i].id, activeConfig.modes[i]);
@@ -67,15 +56,39 @@ void setup() {
   scheduleEngine.configure(activeConfig);
   astroEngine.configure(activeConfig);
 
-  connectWifiIfConfigured();
-  timeService.beginNtp(configStore.current().timezone.c_str());
+  provisioning.begin();
+
+  Serial.print("Node ID: ");
+  Serial.println(provisioning.nodeId());
+  Serial.print("Provisioned: ");
+  Serial.println(provisioning.provisioned() ? "true" : "false");
+
+  if (provisioning.connected()) {
+    timeService.beginNtp(activeConfig.timezone.c_str());
+    ntpStarted = true;
+    webRoutes.begin();
+  } else if (!provisioning.provisioned()) {
+    Serial.println("Waiting for EzHub pair_beacon and directed wifi_cfg");
+  }
+
   timeService.update();
   scheduleEngine.update(timeService.valid(), relays);
   astroEngine.update(timeService.valid(), relays);
-  webRoutes.begin();
 }
 
 void loop() {
+  provisioning.update();
+
+  if (provisioning.connected()) {
+    if (!ntpStarted) {
+      timeService.beginNtp(configStore.current().timezone.c_str());
+      ntpStarted = true;
+    }
+    if (!webRoutes.started()) {
+      webRoutes.begin();
+    }
+  }
+
   timeService.update();
   overrideManager.update(relays);
   scheduleEngine.update(timeService.valid(), relays);
