@@ -32,6 +32,7 @@ C:\Users\Bass\Desktop\GITHUB\EzSystems-standards
 - Declared commands return application ACKs and duplicate `msg_id` requests are deduplicated.
 - `relay.set_mode` persists `manual` or `disabled`; every mode change forces that relay OFF before the configuration is written.
 - `astro.set_rules` validates and persists complete civil-dusk/civil-dawn rule replacements.
+- Any transition between manual, schedule, astro, and disabled releases the relay before the new mode takes control.
 - `node/reboot` forces all relays OFF, sends its ACK, waits briefly, and then restarts.
 
 ## Authoritative HTTP APIs
