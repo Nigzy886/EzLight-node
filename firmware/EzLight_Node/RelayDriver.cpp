@@ -67,6 +67,13 @@ bool RelayDriver::setMode(const String& relayId, RelayMode mode) {
   if (index < 0) {
     return false;
   }
+
+  // Ownership changes between manual, schedule, astro, and disabled are
+  // fail-safe. Release the output before the new mode can take control.
+  if (_states[index].mode != mode) {
+    writePhysical(static_cast<uint8_t>(index), false);
+  }
+
   _states[index].mode = mode;
   if (mode == RelayMode::Disabled) {
     writePhysical(static_cast<uint8_t>(index), false);
